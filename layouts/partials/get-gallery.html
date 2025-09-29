@@ -1,27 +1,79 @@
 {{ $gallery := "" }}
 {{ $images :=  where (.Resources.ByType "image") "Params.hidden" "ne" true }}
-{{ if gt (len $images) 0 }}
+{{ $externalImages := slice }}
+
+{{/* Check for external images in front matter resources */}}
+{{ if .Params.resources }}
+  {{ range .Params.resources }}
+    {{ if hasPrefix .src "http" }}
+      {{ $externalImages = $externalImages | append . }}
+    {{ end }}
+  {{ end }}
+{{ end }}
+
+{{ $totalImageCount := add (len $images) (len $externalImages) }}
+
+{{ if or (gt (len $images) 0) (gt (len $externalImages) 0) }}
   {{ $covers := where (.Resources.ByType "image") "Params.cover" "eq" true }}
   {{ $cover := "" }}
   {{ if ge (len $covers) 0 }}
     {{ $cover = index $covers 0 }}
   {{ end }}
-  {{ $featured := $cover | default ((.Resources.ByType "image").GetMatch (.Params.featured_image | default "*feature*")) | default (index $images 0) }}
-  {{ $thumbnail := $featured.Filter (slice images.AutoOrient (images.Process "fit 600x600")) }}
-  {{ $color := index $thumbnail.Colors 0 | default "transparent" }}
+  
+  {{ $featured := "" }}
+  {{ if .Params.featured_image }}
+    {{ if hasPrefix .Params.featured_image "http" }}
+      {{/* External featured image */}}
+      {{ $featured = .Params.featured_image }}
+    {{ else }}
+      {{/* Local featured image */}}
+      {{ $featured = $cover | default ((.Resources.ByType "image").GetMatch .Params.featured_image) | default (index $images 0) }}
+    {{ end }}
+  {{ else }}
+    {{ $featured = $cover | default ((.Resources.ByType "image").GetMatch "*feature*") | default (index $images 0) }}
+  {{ end }}
+  
+  {{ $thumbnail := "" }}
+  {{ $color := "transparent" }}
+  
+  {{ if and (not $featured) (gt (len $externalImages) 0) }}
+    {{/* Use first external image as featured if no local images */}}
+    {{ $featured = (index $externalImages 0).src }}
+  {{ end }}
+  
+  {{ if and $featured (not (hasPrefix (printf "%v" $featured) "http")) }}
+    {{/* Local image - process it */}}
+    {{ $thumbnail = $featured.Filter (slice images.AutoOrient (images.Process "fit 600x600")) }}
+    {{ $color = index $thumbnail.Colors 0 | default "transparent" }}
+  {{ else if hasPrefix (printf "%v" $featured) "http" }}
+    {{/* External image - use direct URL */}}
+    {{ $thumbnail = $featured }}
+    {{ $color = "transparent" }}
+  {{ end }}
+  
   {{ $imageCount := 0 }}
   {{ $albumCount := 0 }}
   {{ if .IsPage }}
-    {{ $imageCount = len $images }}
+    {{ $imageCount = $totalImageCount }}
   {{ else }}
     {{ range where .RegularPagesRecursive "Params.private" "ne" true }}
       {{ $albumCount = add $albumCount 1 }}
-      {{ $imageCount = add $imageCount (len (where (.Resources.ByType "image") "Params.hidden" "ne" true)) }}
+      {{ $localImages := len (where (.Resources.ByType "image") "Params.hidden" "ne" true) }}
+      {{ $extImages := 0 }}
+      {{ if .Params.resources }}
+        {{ range .Params.resources }}
+          {{ if hasPrefix .src "http" }}
+            {{ $extImages = add $extImages 1 }}
+          {{ end }}
+        {{ end }}
+      {{ end }}
+      {{ $imageCount = add $imageCount (add $localImages $extImages) }}
     {{ end }}
   {{ end }}
   {{ $gallery = dict
     "page" $
     "images" $images
+    "externalImages" $externalImages
     "thumbnail" $thumbnail
     "color" $color
     "albumCount" $albumCount
