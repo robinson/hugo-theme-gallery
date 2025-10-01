@@ -1,3 +1,4 @@
+-----forked from https://nicokaiser.github.io/hugo-theme-gallery/ with enhancement of displaying remote image, for example from azure blob storage, flickr, etc
 # Hugo Gallery Theme
 
 A very simple and opinionated photo gallery theme for Hugo.
